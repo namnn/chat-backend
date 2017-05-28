@@ -26,7 +26,8 @@ var User = mongoose.model('User', new Schema({
     first: String,
     last: String,
     username: {type: String, unique: true},
-    password: {type: String, index: true}
+    password: {type: String, index: true},
+    online: Boolean
 }));
 
 var Conversation = mongoose.model('Conversation', new Schema({
@@ -121,11 +122,22 @@ app.get('/api/logout', function(req, res) {
 });
 
 app.get('/api/friends', function (req, res) {
+    var rooms = io.sockets.adapter.rooms;
+
     User.find({username: {$not: {$eq: res.locals.me.username}}}, {first: true, last: true, username: true}, function(err, doc) {
         if (err)
             return res.send(false);
         if (!doc)
             return res.send(false);
+
+        for (var index = 0; index < doc.length; index++) {
+            if (!rooms[doc[index]._id]) {
+                doc[index].set("online", false);
+            }
+            else {
+                doc[index].set("online", true);
+            }
+        }
 
         res.send({friends: doc});
     });
@@ -145,13 +157,39 @@ var http = require('http');
 var sio = require('socket.io');
 var server = http.createServer(app);
 var io = sio.listen(server.listen(8000));
+var allClients = [];
 io.sockets.on('connection', function(socket) {
-//    console.log('Someone connected');
+    allClients.push(socket);
+
     socket.on('join', function(user) {
+        if (!user || !user.username)
+            return;
+
         socket.name = user.first + ' ' + user.last;
         socket.username = user.username;
         socket.join(user._id);
-        // socket.broadcast.to(user._id).emit('announcement', socket.name + ' joined the chat.');
+        socket.broadcast.emit('announcement', {
+            message: socket.name + ' is online.',
+            user: {
+                username: socket.username,
+                online: true
+            }
+        });
+    });
+
+    socket.on('disconnect', function(user) {
+        if (!user || !user.username)
+            return;
+
+        var name = user.first + ' ' + user.last;
+        allClients.splice(allClients.indexOf(socket), 1);
+        socket.broadcast.emit('announcement', {
+            message: name + ' is offline.',
+            user: {
+                username: user.username,
+                online: false
+            }
+        });
     });
 
     socket.on('text', function(msg, fn) {
@@ -165,6 +203,14 @@ io.sockets.on('connection', function(socket) {
 
         // confirm the reception
         fn(date);
+    });
+
+    socket.on('typingMessage', function(friend) {
+        socket.broadcast.to(friend._id).emit('typingMessage', socket.username);
+    });
+
+    socket.on('noLongerTypingMessage', function(friend) {
+        socket.broadcast.to(friend._id).emit('noLongerTypingMessage', socket.username);
     });
 });
 
