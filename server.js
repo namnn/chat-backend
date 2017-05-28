@@ -181,8 +181,16 @@ io.sockets.on('connection', function(socket) {
         if (!user || !user.username)
             return;
 
-        socket.broadcast.emit('newuser', user);
-        allClients.splice(allClients.indexOf(socket), 1);
+        User.findOne({username: user.username}, function(err, doc) {
+            if (err)
+                return;
+            if (!doc)
+                return;
+
+            user._id = doc._id;
+            socket.broadcast.emit('newuser', user);
+            allClients.splice(allClients.indexOf(socket), 1);
+        });
     });
 
     socket.on('disconnect', function(user) {
