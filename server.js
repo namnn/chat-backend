@@ -177,6 +177,14 @@ io.sockets.on('connection', function(socket) {
         });
     });
 
+    socket.on('signup', function(user) {
+        if (!user || !user.username)
+            return;
+
+        socket.broadcast.emit('newuser', user);
+        allClients.splice(allClients.indexOf(socket), 1);
+    });
+
     socket.on('disconnect', function(user) {
         if (!user || !user.username)
             return;
